@@ -40,6 +40,13 @@ func (d *D2Render) Render(nodes []*models.Node) ([]byte, error) {
 			return nil, err
 		}
 		d.graph = graph
+		for _, neighbor := range node.Neighbors {
+			graph, _, err := d2oracle.Create(d.graph, nil, fmt.Sprintf("%s -> %s", node.ID, neighbor.ID))
+			if err != nil {
+				return nil, err
+			}
+			d.graph = graph
+		}
 		for _, child := range node.Children {
 			graph, _, err := d2oracle.Create(d.graph, nil, fmt.Sprintf("%s.%s", node.ID, child.ID))
 			if err != nil {
