@@ -6,7 +6,7 @@ package cmd
 import (
 	"os"
 
-	"github.com/gusfcarvalho/gmh/pkg/models"
+	"github.com/gusfcarvalho/gmh/pkg/provider/tfstate"
 	"github.com/gusfcarvalho/gmh/pkg/renderer/d2"
 	"github.com/spf13/cobra"
 )
@@ -24,24 +24,18 @@ to quickly create a Cobra application.`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	Run: func(cmd *cobra.Command, args []string) {
-		nodes := []*models.Node{
-			{
-				ID: "A",
-				Neighbors: []*models.Node{
-					{
-						ID: "B",
-					},
-				},
-				Children: []*models.Node{
-					{
-						ID: "Nested",
-					},
-				},
-			},
+		p := tfstate.TFStateProvider{}
+		nodes, err := p.Convert("state.json")
+		if err != nil {
+			panic(err)
 		}
 		t := d2.D2Render{}
 		t.New()
-		_, err := t.Render(nodes)
+		_, err = t.Render(nodes)
+		if err != nil {
+			panic(err)
+		}
+		_, err = t.Compile()
 		if err != nil {
 			panic(err)
 		}

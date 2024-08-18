@@ -32,29 +32,31 @@ func (d *D2Render) New() {
 	}
 	d.graph = graph
 }
-func (d *D2Render) Render(nodes []*models.Node) ([]byte, error) {
-	for _, node := range nodes {
-		// Add a node to the graph
-		graph, _, err := d2oracle.Create(d.graph, nil, node.ID)
+func (d *D2Render) Render(node *models.Node) ([]byte, error) {
+	graph, _, err := d2oracle.Create(d.graph, nil, node.ID)
+	if err != nil {
+		return nil, err
+	}
+	d.graph = graph
+	for _, neighbor := range node.Neighbors {
+		graph, _, err := d2oracle.Create(d.graph, nil, fmt.Sprintf("%s -> %s", node.ID, neighbor.ID))
 		if err != nil {
 			return nil, err
 		}
 		d.graph = graph
-		for _, neighbor := range node.Neighbors {
-			graph, _, err := d2oracle.Create(d.graph, nil, fmt.Sprintf("%s -> %s", node.ID, neighbor.ID))
-			if err != nil {
-				return nil, err
-			}
-			d.graph = graph
-		}
-		for _, child := range node.Children {
-			graph, _, err := d2oracle.Create(d.graph, nil, fmt.Sprintf("%s.%s", node.ID, child.ID))
-			if err != nil {
-				return nil, err
-			}
-			d.graph = graph
+	}
+	for _, child := range node.Children {
+		newChildId := fmt.Sprintf("%s.%s", node.ID, child.ID)
+		child.ID = newChildId
+		_, err := d.Render(child)
+		if err != nil {
+			return nil, err
 		}
 	}
+	return nil, nil
+}
+
+func (d *D2Render) Compile() ([]byte, error) {
 	script := d2format.Format(d.graph.AST)
 	// Compile the script with given theme and layout
 	diagram, _, err := d2lib.Compile(context.Background(), script, &d2lib.CompileOptions{
