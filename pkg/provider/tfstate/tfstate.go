@@ -34,6 +34,7 @@ type Resource struct {
 	ProviderName  string                 `json:"provider_name"`
 	SchemaVersion int                    `json:"schema_version"`
 	Values        map[string]interface{} `json:"values"`
+	DependsOn     []string               `json:"depends_on"`
 }
 
 func (f *TFStateProvider) Convert(path string) (*models.Node, error) {
@@ -51,8 +52,9 @@ func (f *TFStateProvider) Convert(path string) (*models.Node, error) {
 	return nodes, nil
 }
 func sanitizeID(ID string) string {
-	out := strings.ReplaceAll(ID, "\"]", "_")
-	out = strings.ReplaceAll(out, "[\"", "_")
+	out := strings.ReplaceAll(ID, "]", "_")
+	out = strings.ReplaceAll(out, "\"", "")
+	out = strings.ReplaceAll(out, "[", "_")
 	out = strings.ReplaceAll(out, ".", "_")
 	out = strings.ReplaceAll(out, "__", "_")
 	out = strings.TrimSuffix(out, "_")
@@ -68,13 +70,71 @@ func readModule(mod Module) *models.Node {
 		if res.Index != nil {
 			address = fmt.Sprintf("%s.%s.%s", res.Type, res.Name, res.Index)
 		}
-		module_node.Children = append(module_node.Children, &models.Node{
+		dependencies := SanitizeDependencies(res.DependsOn, fmt.Sprintf("%s.%s", res.Address, address))
+		resNode := &models.Node{
 			ID: sanitizeID(address),
-		})
+		}
+		for _, dep := range dependencies {
+			resNode.Neighbors = append(resNode.Neighbors, &models.Node{
+				ID: sanitizeID(dep),
+			})
+		}
+		module_node.Children = append(module_node.Children, resNode)
 	}
 	for _, child := range mod.ChildModules {
 		child_module := readModule(child)
 		module_node.Children = append(module_node.Children, child_module)
 	}
 	return module_node
+}
+
+func SanitizeDependencies(dependencies []string, resourceAddress string) []string {
+	if dependencies == nil {
+		return dependencies
+	}
+	smallPrefixes := []string{}
+	prefixMap := map[string]string{}
+	// clean common prefixes with resource address
+	for _, dep := range dependencies {
+		prefix := findMaxPrefix(dep, resourceAddress)
+		dep = strings.TrimPrefix(dep, prefix)
+		smallPrefixes = append(smallPrefixes, dep)
+		prefixMap[dep] = prefix
+	}
+	depMap := map[string]string{}
+	// clean common between maps
+	for i, dep := range smallPrefixes {
+		commonPrefix := dep
+		for j, dep2 := range smallPrefixes {
+			if i != j {
+				pref := findMaxPrefix(dep2, dep)
+				if pref != "" {
+					commonPrefix = pref[:len(pref)-1]
+				}
+			}
+		}
+		prefixMap[commonPrefix] = prefixMap[dep]
+		depMap[commonPrefix] = prefixMap[commonPrefix] + "." + commonPrefix
+	}
+	sanitized := []string{}
+	for _, dep := range depMap {
+		sanitized = append(sanitized, dep)
+	}
+	return sanitized
+}
+
+func findMaxPrefix(a, b string) string {
+	var prefix string
+	for i := 0; i < len(a) && i < len(b); i++ {
+		if a[i] != b[i] {
+			break
+		}
+		if a[i] == '.' {
+			prefix = a[:i+1]
+		}
+	}
+	if prefix == "module." || prefix == "data." {
+		prefix = ""
+	}
+	return prefix
 }
